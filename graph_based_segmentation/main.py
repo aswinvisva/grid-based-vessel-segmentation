@@ -25,7 +25,7 @@ def segment(in_image, sigma, k, min_size):
     band, height, width = in_image.shape
     print("Height:  " + str(height))
     print("Width:   " + str(width))
-    print("Markers:    " + str(band))
+    print("Markers:   " + str(band))
 
     marker_bands = []
 
@@ -37,6 +37,7 @@ def segment(in_image, sigma, k, min_size):
     edges_size = width * height * 4
     edges = np.zeros(shape=(edges_size, 3), dtype=object)
     num = 0
+
     for y in range(height):
         for x in range(width):
             if x < width - 1:
@@ -89,25 +90,7 @@ def segment(in_image, sigma, k, min_size):
         "Execution time: " + str(int(elapsed_time / 60)) + " minute(s) and " + str(
             int(elapsed_time % 60)) + " seconds")
 
-    # displaying the result
-    # a = fig.add_subplot(1, 2, 1)
-    # plt.imshow(in_image)
-    # a.set_title('Original Image')
-    # a = fig.add_subplot(1, 2, 2)
-    print(Counter(output.flatten()))
     plt.imshow(output/255)
-    # a.set_title('Segmented Image')
     plt.show()
 
-
-# if __name__ == "__main__":
-#     sigma = 0.5
-#     k = 500
-#     min = 50
-#     input_path = "data/paris.jpg"
-#
-#     # Loading the image
-#     input_image = ndimage.imread(input_path, flatten=False, mode=None)
-#     print("Loading is done.")
-#     print("processing...")
-#     segment(input_image, sigma, k, min)
+    return output
