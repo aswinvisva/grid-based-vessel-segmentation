@@ -1,6 +1,4 @@
 import os
-import sys
-sys.path.append("oliveria-lab-ml")
 
 import numpy as np
 import cv2 as cv
