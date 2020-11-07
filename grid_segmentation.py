@@ -1,4 +1,5 @@
 import os
+import time
 from collections import deque
 from statistics import stdev
 
@@ -7,6 +8,8 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import scipy.stats as stats
 from scipy.ndimage import gaussian_filter
+from skimage.exposure import histogram
+from sklearn.metrics import f1_score, accuracy_score
 
 from graph_based_segmentation.main import segment
 from utils.markers_feature_gen import preprocess_marker_data, normalize_expression_data
@@ -25,12 +28,37 @@ def _split_image_into_quadrants(d, x_0, y_0):
     return quadrants
 
 
-def grid_based_segmentation():
+def _otsu_method(t_data):
+    hist, bin_centers = histogram(t_data.ravel(), 256, source_range='image')
+    hist = hist.astype(float)
+
+    # class probabilities for all possible thresholds
+    weight1 = np.cumsum(hist)
+    weight2 = np.cumsum(hist[::-1])[::-1]
+
+    # class means for all possible thresholds
+    mean1 = np.cumsum(hist * bin_centers) / weight1
+    mean2 = (np.cumsum((hist * bin_centers)[::-1]) / weight2[::-1])[::-1]
+
+    # Clip ends to align class 1 and class 2 variables:
+    # The last value of ``weight1``/``mean1`` should pair with zero values in
+    # ``weight2``/``mean2``, which do not exist.
+    variance12 = weight1[:-1] * weight2[1:] * (mean1[:-1] - mean2[1:]) ** 2
+
+    idx = np.argmax(variance12)
+    threshold = bin_centers[:-1][idx]
+
+    return threshold
+
+
+def grid_based_segmentation(verbose=False, debug=False):
     flattened_marker_images, markers_data, marker_names = get_all_point_data()
 
     y_pred = []
-    max_std = 0.4
-    min_grid_size = 64
+    max_std = 0.3
+    min_grid_size = 128
+
+    start_time = time.time()
 
     for marker_data in markers_data:
         marker_dict = dict(zip(marker_names, marker_data))
@@ -49,41 +77,73 @@ def grid_based_segmentation():
             q.append({"X": 0, "Y": 0, "Data": data})
             mask = np.zeros((data.shape[0], data.shape[1]), np.uint8)
 
+            if debug:
+                grid_image = np.zeros((data.shape[0], data.shape[1]), np.uint8)
+
             while len(q) > 0:
                 d = q.popleft()
                 t_data = d["Data"]
                 std = np.std(t_data)
 
-                print("Current Length of Queue: %s" % (str(len(d))))
-                print("[X: %s, Y: %s, Size: %s]" % (str(d["X"]), str(d["Y"]), str(d["Data"].shape)))
-                print("Standard Deviation of Current Block: %s" % std)
+                if debug:
+                    color_map = plt.imshow(t_data)
+                    color_map.set_cmap("viridis")
+                    plt.colorbar()
+
+                    plt.show()
+
+                if verbose:
+                    print("Current Length of Queue: %s" % (str(len(d))))
+                    print("[X: %s, Y: %s, Size: %s]" % (str(d["X"]), str(d["Y"]), str(d["Data"].shape)))
+                    print("Standard Deviation of Current Block: %s" % std)
 
                 if std > max_std and t_data.shape[0] > min_grid_size:
                     quadrants = _split_image_into_quadrants(t_data, d["X"], d["Y"])
                     for quad in quadrants:
                         q.append(quad)
                 else:
-                    m = cv.inRange(t_data, np.percentile(t_data, 98), np.max(t_data))
+                    threshold = _otsu_method(t_data)
+
+                    m = cv.inRange(t_data, threshold, np.max(t_data))
                     mask[d["X"]:d["X"] + d["Data"].shape[0], d["Y"]:d["Y"] + d["Data"].shape[1]] = m
-                    #
-                    # cv.imshow("ASD", mask)
-                    # cv.waitKey(0)
+
+                    if debug:
+                        grid_image[d["X"]:d["X"] + d["Data"].shape[0], d["Y"]:d["Y"] + d["Data"].shape[1]] = m
+                        cv.rectangle(grid_image,
+                                     (d["X"], d["Y"]),
+                                     (d["X"] + d["Data"].shape[0], d["Y"] + d["Data"].shape[1]),
+                                     (255, 255, 255),
+                                     2)
+
+                    if debug:
+                        cv.imshow("ASD", mask)
+                        cv.waitKey(0)
         else:
             # Segmentation
             mask = cv.inRange(data, np.percentile(data, 99), np.max(data))
         y_pred.append(mask)
-        # cv.imshow("ASD", mask)
-        # cv.waitKey(0)
 
-    y_pred = np.expand_dims((np.array(y_pred)/255).astype(np.uint8), axis=-1)
+        if debug:
+            cv.imshow("ASD", mask)
+            cv.imshow("ADSDS", grid_image)
+            cv.waitKey(0)
+
+    end_time = time.time()
+
+    print("Segmentation complete in %s seconds" % str(end_time - start_time))
+
+    y_pred = np.expand_dims((np.array(y_pred) / 255).astype(np.uint8), axis=-1)
     y_true = np.array([cv.cvtColor(img, cv.COLOR_BGR2GRAY) for img in flattened_marker_images])
-    y_true = np.expand_dims(np.array(y_true/255).astype(np.uint8), axis=-1)
+    y_true = np.expand_dims(np.array(y_true / 255).astype(np.uint8), axis=-1)
 
-    cv.imshow("Pred", y_pred[0]*255)
-    cv.imshow("True", y_true[0]*255)
+    cv.imshow("Pred", y_pred[20] * 255)
+    cv.imshow("True", y_true[20] * 255)
     cv.waitKey(0)
 
-    print(mean_iou_np(y_true, y_pred))
+    print("IOU", mean_iou_np(y_true, y_pred))
+    print("Dice", mean_dice_np(y_true, y_pred))
+    print("F1 Score", f1_score(y_true.flatten(), y_pred.flatten()))
+    print("Accuracy Score", accuracy_score(y_true.flatten(), y_pred.flatten()))
 
 
 def metrics_np(y_true, y_pred, metric_name, metric_type='standard', drop_last=True, mean_per_class=False,
@@ -191,6 +251,15 @@ def mean_iou_np(y_true, y_pred, **kwargs):
     Calls metrics_np(y_true, y_pred, metric_name='iou'), see there for allowed kwargs.
     """
     return metrics_np(y_true, y_pred, metric_name='iou', **kwargs)
+
+
+def mean_dice_np(y_true, y_pred, **kwargs):
+    """
+    Compute mean Intersection over Union of two segmentation masks, via numpy.
+
+    Calls metrics_np(y_true, y_pred, metric_name='iou'), see there for allowed kwargs.
+    """
+    return metrics_np(y_true, y_pred, metric_name='dice', **kwargs)
 
 
 if __name__ == '__main__':
