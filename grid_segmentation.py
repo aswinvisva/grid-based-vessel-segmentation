@@ -141,13 +141,19 @@ def _entropy_threhsold(img):
     return img_out
 
 
-def reject_outliers(data, m=10.):
-    d = np.abs(data - np.median(data))
-    mdev = np.median(d)
-    s = d / mdev if mdev else 0.
+def reject_outliers(data, conf):
+    # d = np.abs(data - np.median(data))
+    # mdev = np.median(d)
+    # s = d / mdev if mdev else 0.
 
     m = np.percentile(data, 99)
-    print(m)
+    print("M", m)
+
+    # q75, q25 = np.percentile(data, [75, 25])
+    # iqr = q75 - q25
+    #
+    # m = 1.5 * iqr + q75
+    # print("M", m)
 
     return data[data < m]
 
@@ -162,7 +168,7 @@ def _histogram_threshold(t_data, std, conf):
     print("---------> MIN:", min(np.array(t_data).flatten()))
     # print("---------> n_bins:", n_bins)
 
-    data = reject_outliers(np.array(t_data).flatten())
+    data = reject_outliers(np.array(t_data).flatten(), conf)
     # data = np.array(t_data)
 
     counts, values, patches = plt.hist(data.flatten(), density=False,
@@ -176,6 +182,7 @@ def _histogram_threshold(t_data, std, conf):
     max_val = 0
     middle_val = int((max_val + 1 + len(counts)) / 2)
     val = max(middle_val - int((len(counts) - max_val) * std * conf.noise_scaler), 1)
+
     print("Val", val)
     print("Middle val", middle_val)
     print("Argmax", max_val)
@@ -277,6 +284,7 @@ def grid_based_segmentation():
                         q.append(quad)
                 else:
                     threshold = _histogram_threshold(t_data, std, conf)
+                    # threshold = histogram_selection(t_data)
 
                     m = cv.inRange(t_data, threshold, np.max(t_data))
 

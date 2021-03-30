@@ -1,15 +1,15 @@
 class ThresholdConfig:
     """ Configuration Class for Thresholding"""
 
-    max_std = 0.1
+    max_std = 0.05
     min_grid_size = 256
-    sigma = 4
+    sigma = 2
     max_area_coverage_threshold = 0.995
-    n_bins = 26
+    n_bins = 100
     noise_scaler = 1
 
     results_dir = "results"
-    debug = False
+    debug = True
 
     def dump(self):
         """Display Configurations."""
